@@ -80,6 +80,27 @@ def main():
     )
 
     parser.add_argument(
+        "--custom_descriptions",
+        help="Replace descriptions with the ones retrieved from a csv file",
+        default=False,
+        dest="custom_descriptions",
+    )
+
+    parser.add_argument(
+        "--custom_thumbnails",
+        help="Replace thumbnails with the ones retrieved from a csv file",
+        default=False,
+        dest="custom_thumbnails",
+    )
+
+    parser.add_argument(
+        "--custom_publication_dates",
+        help="Replace publication dates with the ones retrieved from a csv file",
+        default=False,
+        dest="custom_publication_dates",
+    )
+
+    parser.add_argument(
         "--tmp-dir",
         help="Path to create temp folder in. Used for building ZIM file. Receives all data (storage space)",
     )

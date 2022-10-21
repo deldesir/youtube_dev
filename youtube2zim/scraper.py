@@ -87,6 +87,9 @@ class Youtube2Zim:
         use_any_optimized_version,
         s3_url_with_credentials,
         custom_titles,
+        custom_descriptions,
+        custom_thumbnails,
+        custom_publication_dates,
         title=None,
         description=None,
         creator=None,
@@ -124,6 +127,11 @@ class Youtube2Zim:
         self.main_color = main_color
         self.secondary_color = secondary_color
         self.custom_titles = custom_titles
+        self.custom_descriptions = custom_descriptions
+        self.custom_thumbnails = custom_thumbnails
+        self.custom_publication_dates = custom_publication_dates
+        self._all_videos = {}
+        self._playlist_videos = {}
 
         # directory setup
         self.output_dir = Path(output_dir).expanduser().resolve()
@@ -248,6 +256,166 @@ class Youtube2Zim:
             + sorted_playlists[0:index]
             + sorted_playlists[index + 1:]
         )
+
+    @property
+    def all_videos(self):
+        """ list JSON objects of all videos in all playlists """
+        return self._all_videos
+    
+    @all_videos.setter
+    def all_videos(self, all_items):
+        """ list JSON objects of all videos in all playlists """
+        self._all_videos = load_json(self.cache_dir, "videos")
+
+        for playlist in self.playlists:
+            videos_json = get_videos_json(playlist.playlist_id)
+            if self.custom_titles:
+                for row in read_csv(self.custom_titles):
+                    id = extract.video_id(row['url'])
+                    videos_ids_list.append(id)
+                    videos_titles_list.append(row['title'])
+                index = 0
+                logger.info("Replacing titles with custom titles")
+                for items in self._all_videos:
+                    if index < len(videos_ids_list):
+                        items['snippet']['title'] = videos_titles_list[index]
+                        index += 1
+            if self.custom_descriptions:
+                for row in read_csv(self.custom_descriptions):
+                    id = extract.video_id(row['url'])
+                    videos_ids_list.append(id)
+                    videos_descriptions_list.append(row['description'])
+                index = 0
+                logger.info("Replacing descriptions with custom descriptions")
+                for items in self._all_videos:
+                    if index < len(videos_ids_list):
+                        items['snippet']['description'] = videos_descriptions_list[index]
+                        index += 1
+            if self.custom_thumbnails:
+                for row in read_csv(self.custom_thumbnails):
+                    id = extract.video_id(row['url'])
+                    videos_ids_list.append(id)
+                    videos_thumbnails_list.append(row['thumbnail'])
+                index = 0
+                logger.info("Replacing thumbnails with custom thumbnails")
+                for items in self._all_videos:
+                    if index < len(videos_ids_list):
+                        items['snippet']['thumbnails']['standard']['url'] = videos_thumbnails_list[index]
+                        index += 1
+            if self.custom_publication_dates:
+                for row in read_csv(self.custom_publication_dates):
+                    id = extract.video_id(row['url'])
+                    videos_ids_list.append(id)
+                    videos_publication_dates_list.append(row['publication_date'])
+                index = 0
+                logger.info("Replacing publication dates with custom publication dates")
+                for items in self._all_videos:
+                    if index < len(videos_ids_list):
+                        items['snippet']['publishedAt'] = videos_publication_dates_list[index]
+                        index += 1
+
+            skip_outofrange = functools.partial(
+                skip_outofrange_videos, self.dateafter
+            )
+            filter_videos = filter(skip_outofrange, videos_json)
+            filter_videos = filter(skip_deleted_videos, filter_videos)
+            self._all_videos.update(
+                {v["contentDetails"]["videoId"]: v for v in filter_videos}
+            )
+            all_items = save_json(self.cache_dir, "videos", self._all_videos)
+            self._all_videos = all_items
+            self.video_ids = [*self._all_videos.keys()]
+
+    @property
+    def playlist_videos(self):
+        """ list JSON object of all videos in all playlists """
+        return self._playlist_videos
+
+    @playlist_videos.setter
+    def playlist_videos(self, all_items):
+        """ list JSON object of all videos in all playlists """
+        with open(self.assets_dir.joinpath("data.js"), "w", encoding="utf-8") as fp:
+            for playlist in self.playlists:
+                # retrieve list of videos for PL
+                self._playlist_videos = load_json(
+                self.cache_dir, f"playlist_{playlist.playlist_id}_videos"
+                )
+                if self.custom_titles:
+                    for row in read_csv(self.custom_titles):
+                        id = extract.video_id(row['url'])
+                        videos_ids_list.append(id)
+                        videos_titles_list.append(row['title'])
+                    index = 0
+                    logger.info("Replacing titles with custom titles")
+                    for items in self._playlist_videos:
+                        if index < len(videos_ids_list):
+                            items['snippet']['title'] = videos_titles_list[index]
+                            index += 1
+                if self.custom_descriptions:
+                    for row in read_csv(self.custom_descriptions):
+                        id = extract.video_id(row['url'])
+                        videos_ids_list.append(id)
+                        videos_descriptions_list.append(row['description'])
+                    index = 0
+                    logger.info("Replacing descriptions with custom descriptions")
+                    for items in self._playlist_videos:
+                        if index < len(videos_ids_list):
+                            items['snippet']['description'] = videos_descriptions_list[index]
+                            index += 1
+                if self.custom_thumbnails:
+                    for row in read_csv(self.custom_thumbnails):
+                        id = extract.video_id(row['url'])
+                        videos_ids_list.append(id)
+                        videos_thumbnails_list.append(row['thumbnail'])
+                    index = 0
+                    logger.info("Replacing thumbnails with custom thumbnails")
+                    for items in self._playlist_videos:
+                        if index < len(videos_ids_list):
+                            items['snippet']['thumbnails']['standard']['url'] = videos_thumbnails_list[index]
+                            index += 1
+                if self.custom_publication_dates:
+                    for row in read_csv(self.custom_publication_dates):
+                        id = extract.video_id(row['url'])
+                        videos_ids_list.append(id)
+                        videos_publication_dates_list.append(row['publication_date'])
+                    index = 0
+                    logger.info("Replacing publication dates with custom publication dates")
+                    for items in self._playlist_videos:
+                        if index < len(videos_ids_list):
+                            items['snippet']['publishedAt'] = videos_publication_dates_list[index]
+                            index += 1
+                # filtering-out missing ones (deleted or not downloaded)
+                self._playlist_videos = list(filter(skip_deleted_videos, self._playlist_videos))
+                self._playlist_videos = list(filter(is_present, self._playlist_videos))
+                self._playlist_videos = list(filter(has_channel, self._playlist_videos))
+                # sorting them based on playlist
+                self._playlist_videos.sort(key=lambda v: v["snippet"]["position"])
+                
+                all_items = fp.write(
+                    "var json_{slug} = {json_str};\n".format(
+                        slug=playlist.slug,
+                        json_str=json.dumps(
+                            list(map(to_data_js, self._playlist_videos)), indent=4
+                        ),
+                    )
+                )
+                self._playlist_videos = all_items
+
+
+    def read_csv(self, csv_file):
+        """ read a csv file and return a list of videos infos """
+        try:
+            videos_ids_list = []
+            videos_titles_list = []
+            videos_descriptions_list = []
+            videos_thumbnails_list = []
+            videos_publication_dates_list = []
+            with open(csv_file, 'r') as csv_file:
+                reader = csv.reader(csv_file,delimiter=',')
+        except Exception as e:
+            logger.error(f"Error reading CSV file: {e}")
+            return None
+
 
     def run(self):
         """ execute the scraper step by step """
@@ -473,24 +641,8 @@ class Youtube2Zim:
         ) = extract_playlists_details_from(self.collection_type, self.youtube_id)
 
     def extract_videos_list(self):
-        all_videos = load_json(self.cache_dir, "videos")
-        if all_videos is None:
-            all_videos = {}
-
-            # we only return video_ids that we'll use later on. per-playlist JSON stored
-            for playlist in self.playlists:
-                videos_json = get_videos_json(playlist.playlist_id)
-                # filter in videos within date range and filter away deleted videos
-                skip_outofrange = functools.partial(
-                    skip_outofrange_videos, self.dateafter
-                )
-                filter_videos = filter(skip_outofrange, videos_json)
-                filter_videos = filter(skip_deleted_videos, filter_videos)
-                all_videos.update(
-                    {v["contentDetails"]["videoId"]: v for v in filter_videos}
-                )
-            save_json(self.cache_dir, "videos", all_videos)
-        self.videos_ids = [*all_videos.keys()]  # unpacking so it's subscriptable
+        return self.all_videos
+        
 
     def download_video_files(self, max_concurrency):
 
@@ -957,47 +1109,7 @@ class Youtube2Zim:
                 ),
             }
 
-        with open(self.assets_dir.joinpath("data.js"), "w", encoding="utf-8") as fp:
-            # write all playlists as they are
-            for playlist in self.playlists:
-                # retrieve list of videos for PL
-                playlist_videos = load_json(
-                    self.cache_dir, f"playlist_{playlist.playlist_id}_videos"
-                )
-                if self.custom_titles:
-                    # we define variables in case we need to replace sth with values from a csv file as per ZW footprint
-                    videos_ids_list = []
-                    videos_titles_list = []
-                    t_index = 0
-                    with open(self.custom_titles, "r") as ct:
-                        data = csv.reader(ct,delimiter=',')
-            
-                        for row in data:
-                            id = row[0]
-                            title = row[1]
-                            id = extract.video_id(id)
-                            videos_ids_list.append(id)
-                            videos_titles_list.append(title)
-                    logger.info(f"Replacing titles using {self.custom_titles}")
-                    for items in playlist_videos:
-                        if t_index < len(videos_titles_list):
-                            items["snippet"]["title"] = videos_titles_list[t_index]
-                            t_index += 1
-                # filtering-out missing ones (deleted or not downloaded)
-                playlist_videos = list(filter(skip_deleted_videos, playlist_videos))
-                playlist_videos = list(filter(is_present, playlist_videos))
-                playlist_videos = list(filter(has_channel, playlist_videos))
-                # sorting them based on playlist
-                playlist_videos.sort(key=lambda v: v["snippet"]["position"])
-
-                fp.write(
-                    "var json_{slug} = {json_str};\n".format(
-                        slug=playlist.slug,
-                        json_str=json.dumps(
-                            list(map(to_data_js, playlist_videos)), indent=4
-                        ),
-                    )
-                )
+        return self.playlist_videos
 
         # write a metadata.json file with some content-related data
         with open(
